@@ -1,0 +1,855 @@
+Commands/
+ └── ticketSystem/
+     └── ticket.js
+const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType} = require('discord.js');
+  const TicketSetup = require('../../Schemas/TicketSetup');
+  const config = require('../../config');
+ const Discord = require('discord.js');
+  
+  module.exports = {
+    data: new Discord.SlashCommandBuilder()
+      .setName('ticket')
+      .setDescription('Setup da Central')
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+      .addChannelOption((option) =>
+        option
+          .setName('channel')
+          .setDescription('Canal designado ao Setup')
+          .setRequired(true)
+          .addChannelTypes(ChannelType.GuildText)
+      )
+      .addChannelOption((option) =>
+        option
+          .setName('category')
+          .setDescription('Categoria do Atendimento\'s')
+          .setRequired(true)
+          .addChannelTypes(ChannelType.GuildCategory)
+      )
+      .addChannelOption((option) =>
+        option
+          .setName('transcripts')
+          .setDescription('Canal dos registros de Log.')
+          .setRequired(true)
+          .addChannelTypes(ChannelType.GuildText)
+      )
+      .addRoleOption((option) =>
+        option
+          .setName('handlers')
+          .setDescription('Cargo Moderador.')
+          .setRequired(true)
+      )
+      .addRoleOption((option) =>
+        option
+          .setName('everyone')
+          .setDescription('Cargo Everyone.')
+          .setRequired(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName('button')
+          .setDescription('Nome do botão.')
+          .setRequired(true)
+      ),
+    async execute(interaction) {
+      const { guild, options } = interaction;
+      try {
+        const channel = options.getChannel('channel');
+        const category = options.getChannel('category');
+        const transcripts = options.getChannel('transcripts');
+        const handlers = options.getRole('handlers');
+        const everyone = options.getRole('everyone');
+        const button = options.getString('button');
+        await TicketSetup.findOneAndUpdate(
+          { GuildID: guild.id },
+          {
+            Channel: channel.id,
+            Category: category.id,
+            Transcripts: transcripts.id,
+            Handlers: handlers.id,
+            Everyone: everyone.id,
+            Button: button,
+          },  
+          {
+            new: true,
+            upsert: true,
+          }
+        );
+        const embed = new Discord.EmbedBuilder()
+        .setTitle("Central de Suporte")
+        .setThumbnail(url=config.thumbnail)
+        .setColor(config.color)
+        .setFooter({ text: 'Bcc Roleplay © 2026 ', iconURL: config.thumbnail })
+        .setDescription('<:Foguete:1081423107488751626> Entre em contato diretamente com nossa equipe seja para esclarecer dúvidas, adquirir beneficios VIP ou reportar bugs!')
+        .setFields(
+
+          { name: '`💭` Suporte Geral', value: 'Dúvidas ou denuncias? Entre em contato.' },
+
+          { name: '<:users:1096647887422759024> Horário de Atendimento', value: `**Segunda a Domingo das 09:00 às 23:00**
+          Podemos realizar atendimentos fora do horário informado, porém não garantimos disponibilidade.` },
+  
+        )
+        .setImage(url=config.image);
+
+
+
+
+        const buttonshow = new ButtonBuilder()
+          .setCustomId(button)
+          .setLabel("Entrar em Contato")
+          .setEmoji("<:users:1096647887422759024>")
+          .setStyle(ButtonStyle.Secondary);
+        await guild.channels.cache.get(channel.id).send({
+          embeds: [embed],
+          components: [new ActionRowBuilder().addComponents(buttonshow)],
+        }).catch(error => {return});
+        return interaction.reply({ embeds: [new EmbedBuilder().setDescription('Setup ticket criado com sucesso.').setColor(config.color)], ephemeral: true});
+      } catch (err) {
+        console.log(err);
+        const errEmbed = new EmbedBuilder().setColor(config.color).setDescription(config.ticketError);
+        return interaction.reply({ embeds: [errEmbed], ephemeral: true }).catch(error => {return});
+      }
+    },
+  };
+
+
+
+Events/
+ └── basic/
+     └── interactionCreate.js
+const {
+  Events,
+  InteractionType,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder,
+  EmbedBuilder,
+  PermissionFlagsBits
+} = require('discord.js');
+
+const { PIX } = require('gpix/dist');
+const Canvas = require('canvas');
+const config = require('../../config');
+
+module.exports = {
+  name: Events.InteractionCreate,
+
+  async execute(interaction, client) {
+
+    /* ================= SLASH COMMANDS ================= */
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (!command) return;
+
+      try {
+        await command.execute(interaction, client);
+      } catch (error) {
+        console.error(error);
+        if (!interaction.replied) {
+          await interaction.reply({
+            content: '❌ Erro ao executar o comando.',
+            ephemeral: true
+          });
+        }
+      }
+      return;
+    }
+
+    /* ================= BOTÕES ================= */
+    if (interaction.isButton()) {
+
+      /* BOTÃO PIX */
+      if (interaction.customId === 'pix_configurar') {
+
+        if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+          return interaction.reply({ content: '❌ Sem permissão.', ephemeral: true });
+        }
+
+        const modal = new ModalBuilder()
+          .setCustomId('pix_modal')
+          .setTitle('Configurar Pagamento PIX');
+
+        const valor = new TextInputBuilder()
+          .setCustomId('pix_valor')
+          .setLabel('Valor (somente números)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        const produto = new TextInputBuilder()
+          .setCustomId('pix_produto')
+          .setLabel('Produto')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        const chave = new TextInputBuilder()
+          .setCustomId('pix_chave')
+          .setLabel('Chave PIX')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(valor),
+          new ActionRowBuilder().addComponents(produto),
+          new ActionRowBuilder().addComponents(chave)
+        );
+
+        return interaction.showModal(modal);
+      }
+
+      return;
+    }
+
+    /* ================= USER SELECT MENU (NOTIFICAR) ================= */
+    if (interaction.isUserSelectMenu()) {
+
+      if (interaction.customId === 'notificar_user') {
+
+        const userId = interaction.values[0];
+
+        const modal = new ModalBuilder()
+          .setCustomId(`notificar_modal_${userId}`)
+          .setTitle('Enviar Notificação');
+
+        const mensagem = new TextInputBuilder()
+          .setCustomId('mensagem')
+          .setLabel('Mensagem')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(mensagem)
+        );
+
+        return interaction.showModal(modal);
+      }
+
+      return;
+    }
+
+    /* ================= MODALS ================= */
+    if (interaction.type === InteractionType.ModalSubmit) {
+
+      /* MODAL PIX */
+      if (interaction.customId === 'pix_modal') {
+
+        if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+          return interaction.reply({ content: '❌ Sem permissão.', ephemeral: true });
+        }
+
+        const valor = Number(interaction.fields.getTextInputValue('pix_valor'));
+        const produto = interaction.fields.getTextInputValue('pix_produto');
+        const chave = interaction.fields.getTextInputValue('pix_chave');
+
+        const pix = PIX.static()
+          .setReceiverName(interaction.client.user.username.slice(0, 25))
+          .setReceiverCity('Brasil')
+          .setKey(chave)
+          .setDescription(produto)
+          .setAmount(valor);
+
+        const canvas = Canvas.createCanvas(1200, 1200);
+        const ctx = canvas.getContext('2d');
+
+        const qr = await Canvas.loadImage(await pix.getQRCode());
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(qr, 0, 0, canvas.width, canvas.height);
+
+        const embed = new EmbedBuilder()
+          .setTitle('Benefícios Premium')
+          .setThumbnail(config.thumbnail)
+          .setImage('attachment://qrcode.png')
+          .addFields(
+            { name: '🛒 Produto', value: produto },
+            { name: '💰 Valor', value: `R$ ${valor.toFixed(2)}` }
+          )
+          .setFooter({
+            text: 'Após realizar a doação, envie o comprovante.',
+            iconURL: config.thumbnail
+          })
+          .setColor(config.color);
+
+        return interaction.reply({
+          embeds: [embed],
+          files: [{
+            name: 'qrcode.png',
+            attachment: canvas.toBuffer()
+          }]
+        });
+      }
+
+      /* MODAL NOTIFICAR */
+      if (interaction.customId.startsWith('notificar_modal_')) {
+
+        const userId = interaction.customId.replace('notificar_modal_', '');
+        const mensagem = interaction.fields.getTextInputValue('mensagem');
+
+        try {
+          const user = await client.users.fetch(userId);
+
+          await user.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('📩 Nova Notificação')
+                .setDescription(mensagem)
+                .setColor(config.color)
+                .setFooter({ text: 'Mensagem enviada pela administração.' })
+            ]
+          });
+
+          return interaction.reply({
+            content: '✅ Mensagem enviada com sucesso!',
+            ephemeral: true
+          });
+
+        } catch (err) {
+          console.error(err);
+          return interaction.reply({
+            content: '❌ Não foi possível enviar a mensagem (DM fechada?).',
+            ephemeral: true
+          });
+        }
+      }
+    }
+  }
+};
+
+
+Events/
+ └── ticketSystem/
+     └── ticketActions.js
+     const {EmbedBuilder, PermissionFlagsBits, UserSelectMenuBuilder, ActionRowBuilder} = require('discord.js');
+const {createTranscript} = require('discord-html-transcripts');
+const TicketSetup = require('../../Schemas/TicketSetup');
+const TicketSchema = require('../../Schemas/Ticket');
+const config = require('../../config');
+
+module.exports = {
+    name: 'interactionCreate',
+    async execute(interaction, client) {
+        const {guild, member, customId, channel } = interaction;
+        const {ManageChannels, SendMessages} = PermissionFlagsBits;
+        if(!interaction.isButton()) return;
+        if(!['ticket-close', 'ticket-manage', 'ticket-claim'].includes(customId)) return;
+        const docs = await TicketSetup.findOne({GuildID: guild.id});
+        if (!docs) return;
+        const errorEmbed = new EmbedBuilder().setColor(config.color).setDescription(config.ticketError);
+        if (!guild.members.me.permissions.has((r) => r.id === docs.Handlers)) return interaction.reply({embeds: [errorEmbed], ephemeral: true}).catch(error => {return});
+        const executeEmbed = new EmbedBuilder().setColor(config.color);
+        const nopermissionsEmbed = new EmbedBuilder().setColor(config.color).setDescription(config.ticketNoPermissions);
+        const alreadyEmbed = new EmbedBuilder().setColor(config.color);
+        TicketSchema.findOne({GuildID: guild.id, ChannelID: channel.id}, async (err, data) => {
+            if (err) throw err;
+            if (!data) return;
+            await guild.members.cache.get(data.MemberID);
+            await guild.members.cache.get(data.OwnerID);
+            switch (customId) {
+                case 'ticket-close':
+                    if ((!member.permissions.has(ManageChannels)) & (!member.roles.cache.has(docs.Handlers))) return interaction.reply({embeds: [nopermissionsEmbed], ephemeral: true}).catch(error => {return});
+                    const transcript = await createTranscript(channel, {
+                        limit: -1,
+                        returnType: 'attachment',
+                        saveImages: true,
+                        poweredBy: false,
+                        filename: config.ticketName + data.TicketID + '.html',
+                    }).catch(error => {return});
+                    let claimed = undefined;
+                    if (data.Claimed === true) {
+                        claimed = '\✅'
+                    }
+                    if (data.Claimed === false) {
+                        claimed = '\❌'
+                    }
+                    if (data.ClaimedBy === undefined) {
+                        data.ClaimedBy = '\❌'
+                    }else {
+                        data.ClaimedBy = '<@' + data.ClaimedBy + '>'
+                    }
+                    const transcriptTimestamp = Math.round(Date.now() / 1000)
+                    const transcriptEmbed = new EmbedBuilder()
+                    .setDescription(`${config.ticketTranscriptMember} <@${data.OwnerID}>\n${config.ticketTranscriptTicket} ${data.TicketID}\n${config.ticketTranscriptClaimed} ${claimed}\n${config.ticketTranscriptModerator} ${data.ClaimedBy}\n${config.ticketTranscriptTime} <t:${transcriptTimestamp}:R> (<t:${transcriptTimestamp}:F>)`)
+                    const closingTicket = new EmbedBuilder().setTitle(config.ticketCloseTitle).setDescription(config.ticketCloseDescription).setColor(config.color)
+                    await guild.channels.cache.get(docs.Transcripts).send({
+                        embeds: [transcriptEmbed],
+                        files: [transcript],
+                    }).catch(error => {return});
+                    interaction.deferUpdate().catch(error => {return});
+                    channel.send({embeds: [closingTicket]}).catch(error => {return});
+                    await TicketSchema.findOneAndDelete({GuildID: guild.id, ChannelID: channel.id});
+                    setTimeout(() => {channel.delete().catch(error => {return});}, 5000);
+                break;
+
+
+                case 'ticket-manage':
+                    if ((!member.permissions.has(ManageChannels)) & (!member.roles.cache.has(docs.Handlers))) return interaction.reply({embeds: [nopermissionsEmbed], ephemeral: true}).catch(error => {return});
+                    const menu = new UserSelectMenuBuilder()
+                    .setCustomId('ticket-manage-menu')
+                    .setPlaceholder(config.ticketManageMenuEmoji + config.ticketManageMenuTitle)
+                    .setMinValues(1)
+                    .setMaxValues(1)
+                    return interaction.reply({components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true}).catch(error => {return});
+                    
+                case 'ticket-claim':
+                    if ((!member.permissions.has(ManageChannels)) & (!member.roles.cache.has(docs.Handlers))) return interaction.reply({embeds: [nopermissionsEmbed], ephemeral: true}).catch(error => {return});
+                    alreadyEmbed.setDescription(config.ticketAlreadyClaim + ' <@' + data.ClaimedBy + '>.');
+                    if (data.Claimed == true) return interaction.reply({embeds: [alreadyEmbed], ephemeral: true}).catch(error => {return});
+                    await TicketSchema.updateOne({ChannelID: channel.id}, {Claimed: true, ClaimedBy: member.id});
+                    let lastinfos = channel;
+                    await channel.edit({name: config.ticketCheck + '・' + lastinfos.name, topic: lastinfos.topic + config.ticketDescriptionClaim + '<@' + member.id + '>.'}).catch(error => {return});
+                    executeEmbed.setDescription(config.ticketSuccessClaim).setTitle('Central de Suporte');
+                    interaction.deferUpdate().catch(error => {return});
+                    interaction.channel.send({embeds: [executeEmbed]}).catch(error => {return});
+                    break;
+            }   
+        })
+    }
+}
+
+Events/
+ └── ticketSystem/
+     └── ticketManage.js
+     const {EmbedBuilder, PermissionFlagsBits} = require('discord.js');
+const TicketSchema = require('../../Schemas/Ticket');
+const config = require('../../config');
+
+module.exports = {
+    name: 'interactionCreate',
+    async execute(interaction, client) {
+        const {guild, member, customId, channel } = interaction;
+        const {ManageChannels, SendMessages} = PermissionFlagsBits;
+        if(!['ticket-manage-menu'].includes(customId)) return;
+        await interaction.deferUpdate();
+		await interaction.deleteReply();
+        const embed = new EmbedBuilder()
+        TicketSchema.findOne({GuildID: guild.id, ChannelID: channel.id}, async (err, data) => {
+            if (err) throw err;
+            if (!data) return interaction.reply({embeds: [embed.setColor(config.color).setDescription(config.ticketError)], ephemeral: true}).catch(error => {return});
+            const findMembers = await TicketSchema.findOne({GuildID: guild.id, ChannelID: channel.id, MembersID: interaction.values[0]});
+            if(!findMembers) {
+            data.MembersID.push(interaction.values[0]);
+            channel.permissionOverwrites.edit(interaction.values[0], {
+                SendMessages: true,
+                ViewChannel: true,
+                ReadMessageHistory: true
+            }).catch(error => {return});
+            interaction.channel.send({embeds: [embed.setColor(config.color).setDescription('<@' + interaction.values[0] + '>' + ' ' + config.ticketMemberAdd)]}).catch(error => {return});
+            data.save();
+            }else {
+            data.MembersID.remove(interaction.values[0]);
+            channel.permissionOverwrites.delete(interaction.values[0]).catch(error => {return});
+            interaction.channel.send({embeds: [embed.setColor(config.color).setDescription('<@' + interaction.values[0] + '>' + ' ' + config.ticketMemberRemove)]}).catch(error => {return});
+            data.save();
+            }
+    })
+    }
+}
+
+Events/
+ └── ticketSystem/
+     └── ticketResponse.js
+     const {ChannelType, ButtonInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits} = require('discord.js');
+const TicketSchema = require('../../Schemas/Ticket');
+const discord = require('discord.js')
+const TicketSetup = require('../../Schemas/TicketSetup');
+const config = require('../../config');
+
+
+module.exports = {
+    name: 'interactionCreate',
+    async execute(interaction) {
+        const {guild, member, customId, channel} = interaction;
+        const {ViewChannel, SendMessages, ManageChannels, ReadMessageHistory} = PermissionFlagsBits;
+        const ticketId = Math.floor(Math.random() * 9000) + 10000;
+        if (!interaction.isButton()) return;
+        const data = await TicketSetup.findOne({GuildID: guild.id});
+        if (!data) return;
+        if (!data.Button.includes(customId)) return;
+        const alreadyticketEmbed = new EmbedBuilder().setDescription(config.ticketAlreadyExist).setColor(config.color)
+        const findTicket = await TicketSchema.findOne({GuildID: guild.id, OwnerID: member.id});
+        if (findTicket) return interaction.reply({embeds: [alreadyticketEmbed], ephemeral: true}).catch(error => {return});
+        if (!guild.members.me.permissions.has(ManageChannels)) return interaction.reply({content: 'Sem permissões', ephemeral: true}).catch(error => {return});
+        try {
+            await guild.channels.create({
+                name: config.ticketName + ticketId,
+                type: ChannelType.GuildText,
+                parent: data.Category,
+                permissionOverwrites: [
+                    {
+                        id: interaction.user.id,
+                        allow: [discord.PermissionFlagsBits.SendMessages, discord.PermissionFlagsBits.ViewChannel],
+                    },
+                    {
+                        id: data.Everyone,
+                        allow: [discord.PermissionFlagsBits.SendMessages, discord.PermissionFlagsBits.ViewChannel],
+                    },
+                    {
+                        id: interaction.guild.roles.everyone,
+                        deny: [discord.PermissionFlagsBits.ViewChannel],
+                    },
+                    //{
+                    //    id: data.Everyone,
+                    //    deny: [ViewChannel, SendMessages, ReadMessageHistory],
+                   // },
+                 //   {
+                 //       id: data.Handlers,
+                //        allow: [ViewChannel, SendMessages, ReadMessageHistory, ManageChannels],
+                  //  },
+                   // {
+                   //     id: member.id,
+                   //     allow: [ViewChannel, SendMessages, ReadMessageHistory],
+                   // },
+                ],
+            }).catch(error => {return}).then(async (channel) => {
+                await TicketSchema.create({
+                    GuildID: guild.id,
+                    OwnerID: member.id,
+                    MemberID: member.id,
+                    TicketID: ticketId,
+                    ChannelID: channel.id,
+                    Locked: false,
+                    Claimed: false,
+                });
+                await channel.setTopic(config.ticketDescription + ' <@' + member.id + '>').catch(error => {return});
+                //const embed = new EmbedBuilder().setTitle(config.ticketMessageTitle).setDescription(config.ticketMessageDescription)
+                const embed = new EmbedBuilder()
+                .setTitle(config.title)
+                .setThumbnail(url=config.thumbnail)
+                .setColor(config.color)
+                .setDescription(`<:users:1096647887422759024> **Usuário:** ${interaction.user}\n <:Reply:1093347552444825620> ${interaction.user.id}\n📜 **Por favor, aguarde. Nossa equipe irá atendê-lo neste canal em breve.**`)
+                const button = new ActionRowBuilder().setComponents(
+                    new ButtonBuilder().setCustomId('ticket-close').setLabel(config.ticketClose).setStyle(ButtonStyle.Secondary).setEmoji(config.ticketCloseEmoji),
+                    new ButtonBuilder().setCustomId('ticket-manage').setLabel(config.ticketManage).setStyle(ButtonStyle.Secondary).setEmoji(config.ticketManageEmoji),
+                    new ButtonBuilder().setCustomId('ticket-claim').setLabel(config.ticketClaim).setStyle(ButtonStyle.Success).setEmoji(config.ticketClaimEmoji),
+                );
+                channel.send({embeds: ([embed]),components: [button]}).catch(error => {return});
+                const handlersmention = await channel.send({content : '<@&' + data.Handlers + '>'});
+                handlersmention.delete().catch(error => {return});
+                const ticketmessage = new EmbedBuilder().setColor(config.color).setDescription(config.ticketCreate + '\n <:Reply:1093347552444825620>' + ' <#' + channel.id + '>').setColor(config.color);
+                interaction.reply({embeds: [ticketmessage], ephemeral: true}).catch(error => {return});
+            })
+        } catch (err) {
+            return console.log(err);
+        }
+
+    }
+}
+
+
+
+Handlers/
+ └── commandHandler.js/
+     function loadCommands(client) {
+  const fs = require('fs');
+  const config = require('../config');
+  require('colors');
+
+  let commandsArray = [];
+  let developerArray = [];
+
+  const commandsFolder = fs.readdirSync('./Commands');
+  for (const folder of commandsFolder) {
+    const commandFiles = fs
+      .readdirSync(`./Commands/${folder}`)
+      .filter((file) => file.endsWith('.js'));
+
+    for (const file of commandFiles) {
+      const commandFile = require(`../Commands/${folder}/${file}`);
+
+      client.commands.set(commandFile.data.name, commandFile);
+
+      if (commandFile.developer) developerArray.push(commandFile.data.toJSON());
+      else commandsArray.push(commandFile.data.toJSON());
+
+      console.log('✦ Scripts'.red + ` ${file.split('.')[0]} em atividade regular.`);
+      continue;
+    }
+  }
+
+  const developerGuild = client.guilds.cache.get(config.developerGuildID);
+if (developerGuild) {
+  developerGuild.commands.set(commandsArray);
+}}
+
+module.exports = { loadCommands };
+
+
+Handlers/
+ └── eventHandler.js/
+ /* function loadEvents(client) {
+    const fs = require('fs');
+    const folders = fs.readdirSync('./Events');
+    require('colors');
+    for (const folder of folders) {
+        const files = fs
+        .readdirSync(`./Events/${folder}`)
+        .filter((file) => file.endsWith('.js'))
+        for (const file of files) {
+            const event = require(`../Events/${folder}/${file}`);
+            if(event.rest) {
+                if(event.once)
+                client.rest.once(event.name, (...args) => 
+                event.execute(...args, client)
+                );
+                else
+                client.rest.on(event.name, (...args) => 
+                event.execute(...args, client)
+                );
+            } else {
+                if(event.once)
+                 client.once(event.name, (...args) => event.execute(...args, client));
+                else client.on(event.name, (...args) => event.execute(...args, client));
+            }
+            console.log('✦ Evento'.cyan + ` ${file.split('.')[0]} em atividade.`);
+            continue;
+        }
+    }
+}
+
+module.exports = { loadEvents }
+
+OFICIALLLL */
+
+
+
+const fs = require('fs');
+const path = require('path');
+require('colors');
+
+function loadEvents(client) {
+
+  const eventsPath = path.join(__dirname, '../Events');
+  const folders = fs.readdirSync(eventsPath);
+
+  for (const folder of folders) {
+    const folderPath = path.join(eventsPath, folder);
+    const files = fs
+      .readdirSync(folderPath)
+      .filter(file => file.endsWith('.js'));
+
+    for (const file of files) {
+      const event = require(path.join(folderPath, file));
+
+      if (event.once) {
+        client.once(event.name, (...args) => event.execute(...args, client));
+      } else {
+        client.on(event.name, (...args) => event.execute(...args, client));
+      }
+
+      console.log('✦ Evento'.cyan + ` ${event.name} em atividade.`);
+    }
+  }
+}
+
+module.exports = { loadEvents };
+
+
+Schemas/
+ └── Ticket.js/
+const {model, Schema} = require('mongoose');
+
+let TicketSchema = new Schema({
+    GuildID: String,
+    OwnerID: String,
+    MembersID: [String],
+    TicketID: String,
+    ChannelID: String,
+    Claimed: Boolean,
+    ClaimedBy: String
+});
+
+module.exports = model('Ticket', TicketSchema); 
+
+
+ Schemas/
+ └── TicketSetup.js/
+ const {model, Schema} = require('mongoose');
+
+let TicketSetup = new Schema({
+    GuildID: String,
+    Channel: String,
+    Category: String,
+    Transcripts: String,
+    Handlers: String,
+    Everyone: String,
+    Description: String,
+    Button: String,
+    Emoji: String,
+})
+
+module.exports = model('TicketSetup', TicketSetup);
+
+NA RAIZ DO BOT EU TENHO OS ARQUIVOS
+
+.env
+└──
+TOKEN=MTQ1NjQzMzI5MTYzOTkxODU5NA.Gjm82s.R_7CySzopB2A00_vBMz4IW66_inlaPivE1JV5I
+CLIENT_ID=1456433291639918594
+
+config.js
+└──
+module.exports = {
+/* ---------- CONFIG BÁSICA --------- */
+
+    token: "MTQ1NjQzMzI5MTYzOTkxODU5NA.Gjm82s.R_7CySzopB2A00_vBMz4IW66_inlaPivE1JV5I", // Place here your token
+    developerGuildID: '1079207706050691112', // Place here your Guild ID
+    database: 'mongodb+srv://kaxcav:kaxcav@kstudio.of18s.mongodb.net/?appName=kstudio', // Place here your MongoDB access
+
+/* ---------- ATIVIDADES --------- */
+
+    oneac: 'suas dúvidas...',
+    twoac: 'felicidades ✦',
+    threeac: 'Vem pro Bcc! ✦',
+
+/* ---------- TICKET CONFIGURATION --------- */
+    // Embed
+
+    title: 'Canal de Atendimento',
+    thumbnail: 'https://cdn.discordapp.com/attachments/1031035894548942931/1333425160178372618/layer.png?',
+    image: 'https://media.discordapp.net/attachments/1329623276703453224/1329651166170185738/backgroundgtaequipoudesigner70.jpg?',
+    color: '#9c89ad',
+
+    // NÃO MEXER AQUI, A NÃO SER QUE SAIBA O QUE ESTÁ FAZENDO! 
+
+    ticketName: ':support:-',
+    ticketDescription: '✦ Suporte solicitado por',
+    ticketCreate: '<:users:1096647887422759024> Suporte em andamento! Prossiga para este canal.',
+    ticketAlreadyExist: 'Você já está em uma sala de atendimento!',
+    ticketNoPermissions: 'Você não tem a devida autorização para executar essa ação.',
+    ticketError: 'Não foi possível fazer isso agora... Tente mais tarde!',
+    ticketMessageTitle: 'Bem vindo! Como podemos ajudá-lo?.',
+    ticketMessageDescription: 'Em breve, nosso time de suporte o atenderá.\nObrigado por aguardar com calma e bom humor.',
+    ticketClose: 'Cancelar Contato',
+    ticketCloseEmoji: '<:crosscircle:1122372730596110466>',
+    ticketClaim: 'Assumir Suporte',
+    ticketCheck: '✅', 
+    ticketClaimEmoji: '<:passaport:1097934201841516596>',
+    ticketManage: 'Adicionar Membro',
+    ticketManageEmoji: '<:users:1121581548777517056>',
+    ticketManageMenuTitle: 'Selecione quem deseja adicionar ao atendimento.',
+    ticketManageMenuEmoji: '❔ ',
+    ticketCloseTitle: 'Atendimento Encerrado',
+    ticketCloseDescription: 'Agradecemos pelo contato.',
+    ticketSuccessClaim: '<:comments:1122367907800821840>  Seja bem-vindo à equipe de suporte do Bcc Roleplay! Em que podemos ajudar você hoje?',
+    ticketAlreadyClaim: 'Atendimento em andamento por',
+    ticketDescriptionClaim: ', atendido por ',
+    ticketTranscriptMember: 'Membro:',
+    ticketTranscriptTicket: 'Ticket:',
+    ticketTranscriptClaimed: 'Assumido:',
+    ticketTranscriptModerator: 'Administrador que assumiu:',
+    ticketTranscriptTime: 'Quando:',
+    ticketMemberAdd: 'foi adicionado ao suporte.',
+    ticketMemberRemove: 'foi removido ao suporte.',
+}
+
+
+
+deploy-commands.js
+└──
+const { REST, Routes } = require('discord.js');
+const fs = require('node:fs');
+const path = require('node:path');
+require('dotenv').config();
+
+const commands = [];
+const commandsPath = path.join(__dirname, 'commands');
+
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+for (const file of commandFiles) {
+  const filePath = path.join(commandsPath, file);
+  const command = require(filePath);
+
+  if ('data' in command && 'execute' in command) {
+    commands.push(command.data.toJSON());
+  }
+}
+
+const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+
+(async () => {
+  try {
+    console.log('🔁 Registrando comandos...');
+
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commands }
+    );
+
+    console.log('✅ Comandos registrados com sucesso!');
+  } catch (error) {
+    console.error(error);
+  }
+})();
+
+
+
+main.js
+└──
+const Discord = require('discord.js');
+const client = new Discord.Client({intents: 3276799});
+const config = require('./config');
+const { connect, mongoose } = require('mongoose');
+const { ActivityType } = require('discord.js');
+const { loadEvents } = require('./Handlers/eventHandler');
+const { loadCommands } = require('./Handlers/commandHandler');
+require('colors');
+client.commands = new Discord.Collection();
+client.buttons = new Discord.Collection();
+client.selectMenus = new Discord.Collection();
+client.modals = new Discord.Collection();
+client
+    .login(config.token)
+    .then(() => {
+        console.clear();
+        console.log('[Discord API] '.green + client.user.username + ' foi logado com sucesso.');
+        mongoose.set('strictQuery', true);
+        connect(config.database, {
+        }).then(() => {
+        console.log('✦ Database '.green + 'em operação.')
+        loadEvents(client);
+        loadCommands(client);
+        });
+        })
+    .catch((err) => console.log(err));
+
+    const status = [
+        {
+          name: config.oneac,
+          type: Discord.ActivityType.Listening,
+          url: 'https://www.twitch.tv/discord',
+      
+        },
+        {
+          name: config.twoac,
+          type: Discord.ActivityType.Streaming,
+          url: 'https://www.twitch.tv/discord',
+        },
+        {
+          name: config.threeac,
+          type: Discord.ActivityType.Streaming,
+          url: 'https://www.twitch.tv/discord',
+      
+        },
+      
+      ]
+      
+      client.on('ready', (c) => {
+        console.clear();
+        console.log(`✦ Kaxcav Studios </> - Online!`)
+        console.log('𝔓𝔄𝔗𝔒 𝔇𝔘𝔖 𝔅𝔈ℭ𝔎');
+      
+        setInterval(() => {
+          let random = Math.floor(Math.random() * status.length);
+          client.user.setActivity(status[random]);
+        }, 5000);
+        client.user.setStatus('idle');
+      });
+    
+//const mg = require('mongoose');
+//
+ //    mg.connect('mongodb+srv://patodusbeck:Manu2019@cluster0.7hnyin0.mongodb.net/?retryWrites=true&w=majority', {
+
+//
+  //   }).then(()  => console.log('Database Online com sucesso.'));
+
+  FIM

@@ -1,0 +1,21 @@
+{
+  "name": "space-ticket-system",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "ticketdusbeck": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "noam",
+  "license": "ISC",
+  "dependencies": {
+    "canvas": "^3.1.2",
+    "colors": "^1.4.0",
+    "discord-html-transcripts": "^3.1.2",
+    "discord.js": "^14.7.1",
+    "dotenv": "^17.2.3",
+    "gpix": "^1.1.8",
+    "mongodb": "^6.9.0",
+    "mongoose": "^6.8.3"
+  }
+}

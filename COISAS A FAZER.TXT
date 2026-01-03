@@ -1,0 +1,8 @@
+Salvar historico no mongoDB
+Painel na Embed do Ticket
+Em vez de criar sempre o mesmo ticket, deixe o usuário escolher atraves de menu:
+
+🛒 Compras / VIP
+🧾 Suporte Geral
+🚨 Denúncia
+💰 Comprovante PIX
