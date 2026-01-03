@@ -1,9 +1,9 @@
 module.exports = {
 /* ---------- CONFIG BÁSICA --------- */
 
-    token: "MTQ1NjQzMzI5MTYzOTkxODU5NA.Gjm82s.R_7CySzopB2A00_vBMz4IW66_inlaPivE1JV5I", // Place here your token
+    token: "XXXXXXXXXXXXX", // Place here your token
     developerGuildID: '1079207706050691112', // Place here your Guild ID
-    database: 'mongodb+srv://kaxcav:kaxcav@kstudio.of18s.mongodb.net/?appName=kstudio', // Place here your MongoDB access
+    database: 'mongodb+srv://kaxcav:XXXXXXXXX@kstudio.of18s.mongodb.net/?appName=kstudio', // Place here your MongoDB access
 
 /* ---------- ATIVIDADES --------- */
 
