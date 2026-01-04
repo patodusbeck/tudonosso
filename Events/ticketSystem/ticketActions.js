@@ -1,86 +1,155 @@
-const {EmbedBuilder, PermissionFlagsBits, UserSelectMenuBuilder, ActionRowBuilder} = require('discord.js');
-const {createTranscript} = require('discord-html-transcripts');
+const {
+    EmbedBuilder,
+    PermissionFlagsBits,
+    UserSelectMenuBuilder,
+    ActionRowBuilder
+} = require('discord.js');
+
+const { createTranscript } = require('discord-html-transcripts');
+
 const TicketSetup = require('../../Schemas/TicketSetup');
 const TicketSchema = require('../../Schemas/Ticket');
 const config = require('../../config');
 
 module.exports = {
     name: 'interactionCreate',
-    async execute(interaction, client) {
-        const {guild, member, customId, channel } = interaction;
-        const {ManageChannels, SendMessages} = PermissionFlagsBits;
-        if(!interaction.isButton()) return;
-        if(!['ticket-close', 'ticket-manage', 'ticket-claim'].includes(customId)) return;
-        const docs = await TicketSetup.findOne({GuildID: guild.id});
+
+    async execute(interaction) {
+        if (!interaction.isButton()) return;
+
+        const { guild, member, customId, channel } = interaction;
+        const { ManageChannels } = PermissionFlagsBits;
+
+        if (!['ticket-close', 'ticket-manage', 'ticket-claim'].includes(customId)) return;
+
+        const docs = await TicketSetup.findOne({ GuildID: guild.id });
         if (!docs) return;
-        const errorEmbed = new EmbedBuilder().setColor(config.color).setDescription(config.ticketError);
-        if (!guild.members.me.permissions.has((r) => r.id === docs.Handlers)) return interaction.reply({embeds: [errorEmbed], ephemeral: true}).catch(error => {return});
+
+        const nopermissionsEmbed = new EmbedBuilder()
+            .setColor(config.color)
+            .setDescription(config.ticketNoPermissions);
+
         const executeEmbed = new EmbedBuilder().setColor(config.color);
-        const nopermissionsEmbed = new EmbedBuilder().setColor(config.color).setDescription(config.ticketNoPermissions);
         const alreadyEmbed = new EmbedBuilder().setColor(config.color);
-        TicketSchema.findOne({GuildID: guild.id, ChannelID: channel.id}, async (err, data) => {
-            if (err) throw err;
-            if (!data) return;
-            await guild.members.cache.get(data.MemberID);
-            await guild.members.cache.get(data.OwnerID);
-            switch (customId) {
-                case 'ticket-close':
-                    if ((!member.permissions.has(ManageChannels)) & (!member.roles.cache.has(docs.Handlers))) return interaction.reply({embeds: [nopermissionsEmbed], ephemeral: true}).catch(error => {return});
-                    const transcript = await createTranscript(channel, {
-                        limit: -1,
-                        returnType: 'attachment',
-                        saveImages: true,
-                        poweredBy: false,
-                        filename: config.ticketName + data.TicketID + '.html',
-                    }).catch(error => {return});
-                    let claimed = undefined;
-                    if (data.Claimed === true) {
-                        claimed = '\✅'
-                    }
-                    if (data.Claimed === false) {
-                        claimed = '\❌'
-                    }
-                    if (data.ClaimedBy === undefined) {
-                        data.ClaimedBy = '\❌'
-                    }else {
-                        data.ClaimedBy = '<@' + data.ClaimedBy + '>'
-                    }
-                    const transcriptTimestamp = Math.round(Date.now() / 1000)
-                    const transcriptEmbed = new EmbedBuilder()
-                    .setDescription(`${config.ticketTranscriptMember} <@${data.OwnerID}>\n${config.ticketTranscriptTicket} ${data.TicketID}\n${config.ticketTranscriptClaimed} ${claimed}\n${config.ticketTranscriptModerator} ${data.ClaimedBy}\n${config.ticketTranscriptTime} <t:${transcriptTimestamp}:R> (<t:${transcriptTimestamp}:F>)`)
-                    const closingTicket = new EmbedBuilder().setTitle(config.ticketCloseTitle).setDescription(config.ticketCloseDescription).setColor(config.color)
-                    await guild.channels.cache.get(docs.Transcripts).send({
-                        embeds: [transcriptEmbed],
-                        files: [transcript],
-                    }).catch(error => {return});
-                    interaction.deferUpdate().catch(error => {return});
-                    channel.send({embeds: [closingTicket]}).catch(error => {return});
-                    await TicketSchema.findOneAndDelete({GuildID: guild.id, ChannelID: channel.id});
-                    setTimeout(() => {channel.delete().catch(error => {return});}, 5000);
+
+        const data = await TicketSchema.findOne({
+            GuildID: guild.id,
+            ChannelID: channel.id
+        });
+        if (!data) return;
+
+        switch (customId) {
+
+            // ❌ FECHAR TICKET
+            case 'ticket-close': {
+                if (
+                    !member.permissions.has(ManageChannels) &&
+                    !member.roles.cache.has(docs.Handlers)
+                ) {
+                    return interaction.reply({ embeds: [nopermissionsEmbed], ephemeral: true });
+                }
+
+                const transcript = await createTranscript(channel, {
+                    limit: -1,
+                    returnType: 'attachment',
+                    saveImages: true,
+                    poweredBy: false,
+                    filename: `${config.ticketName}${data.TicketID}.html`
+                });
+
+                const claimed = data.Claimed ? '✅' : '❌';
+                const claimedBy = data.ClaimedBy ? `<@${data.ClaimedBy}>` : '❌';
+                const timestamp = Math.round(Date.now() / 1000);
+
+                const transcriptEmbed = new EmbedBuilder().setDescription(
+                    `${config.ticketTranscriptMember} <@${data.OwnerID}>\n` +
+                    `${config.ticketTranscriptTicket} ${data.TicketID}\n` +
+                    `${config.ticketTranscriptClaimed} ${claimed}\n` +
+                    `${config.ticketTranscriptModerator} ${claimedBy}\n` +
+                    `${config.ticketTranscriptTime} <t:${timestamp}:F>`
+                );
+
+                await guild.channels.cache.get(docs.Transcripts)?.send({
+                    embeds: [transcriptEmbed],
+                    files: [transcript]
+                });
+
+                await interaction.deferUpdate();
+
+                await channel.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setTitle(config.ticketCloseTitle)
+                            .setDescription(config.ticketCloseDescription)
+                            .setColor(config.color)
+                    ]
+                });
+
+                await TicketSchema.deleteOne({
+                    GuildID: guild.id,
+                    ChannelID: channel.id
+                });
+
+                setTimeout(() => channel.delete().catch(() => {}), 5000);
                 break;
+            }
 
+            // 👤 GERENCIAR MEMBRO
+            case 'ticket-manage': {
+                if (
+                    !member.permissions.has(ManageChannels) &&
+                    !member.roles.cache.has(docs.Handlers)
+                ) {
+                    return interaction.reply({ embeds: [nopermissionsEmbed], ephemeral: true });
+                }
 
-                case 'ticket-manage':
-                    if ((!member.permissions.has(ManageChannels)) & (!member.roles.cache.has(docs.Handlers))) return interaction.reply({embeds: [nopermissionsEmbed], ephemeral: true}).catch(error => {return});
-                    const menu = new UserSelectMenuBuilder()
+                const menu = new UserSelectMenuBuilder()
                     .setCustomId('ticket-manage-menu')
-                    .setPlaceholder(config.ticketManageMenuEmoji + config.ticketManageMenuTitle)
+                    .setPlaceholder(
+                        config.ticketManageMenuEmoji + config.ticketManageMenuTitle)
                     .setMinValues(1)
-                    .setMaxValues(1)
-                    return interaction.reply({components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true}).catch(error => {return});
-                    
-                case 'ticket-claim':
-                    if ((!member.permissions.has(ManageChannels)) & (!member.roles.cache.has(docs.Handlers))) return interaction.reply({embeds: [nopermissionsEmbed], ephemeral: true}).catch(error => {return});
-                    alreadyEmbed.setDescription(config.ticketAlreadyClaim + ' <@' + data.ClaimedBy + '>.');
-                    if (data.Claimed == true) return interaction.reply({embeds: [alreadyEmbed], ephemeral: true}).catch(error => {return});
-                    await TicketSchema.updateOne({ChannelID: channel.id}, {Claimed: true, ClaimedBy: member.id});
-                    let lastinfos = channel;
-                    await channel.edit({name: config.ticketCheck + '・' + lastinfos.name, topic: lastinfos.topic + config.ticketDescriptionClaim + '<@' + member.id + '>.'}).catch(error => {return});
-                    executeEmbed.setDescription(config.ticketSuccessClaim).setTitle('Central de Suporte');
-                    interaction.deferUpdate().catch(error => {return});
-                    interaction.channel.send({embeds: [executeEmbed]}).catch(error => {return});
-                    break;
-            }   
-        })
+                    .setMaxValues(1);
+
+                return interaction.reply({
+                    components: [new ActionRowBuilder().addComponents(menu)],
+                    ephemeral: true
+                });
+            }
+
+            // 🏷️ CLAIMAR TICKET
+            case 'ticket-claim': {
+                if (
+                    !member.permissions.has(ManageChannels) &&
+                    !member.roles.cache.has(docs.Handlers)
+                ) {
+                    return interaction.reply({ embeds: [nopermissionsEmbed], ephemeral: true });
+                }
+
+                if (data.Claimed) {
+                    alreadyEmbed.setDescription(
+                        `${config.ticketAlreadyClaim} <@${data.ClaimedBy}>`
+                    );
+                    return interaction.reply({ embeds: [alreadyEmbed], ephemeral: true });
+                }
+
+                await TicketSchema.updateOne(
+                    { ChannelID: channel.id },
+                    { Claimed: true, ClaimedBy: member.id }
+                );
+
+                await channel.edit({
+                    name: `${config.ticketCheck}・${channel.name}`,
+                    topic: `${channel.topic}${config.ticketDescriptionClaim}<@${member.id}>`
+                });
+
+                executeEmbed
+                    .setTitle('Central de Suporte')
+                    .setDescription(config.ticketSuccessClaim);
+
+                await interaction.deferUpdate();
+                await channel.send({ embeds: [executeEmbed] });
+                break;
+            }
+        }
     }
-}
+};

@@ -1,0 +1,309 @@
+const {
+  ActionRowBuilder,
+  PermissionFlagsBits,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} = require('discord.js');
+
+const TicketSchema = require('../../Schemas/Ticket');
+const STAFF_ROLE_ID = '1079207706050691119';
+const config = require('../../config');
+const { createTranscript } = require('discord-html-transcripts');
+const TicketSetup = require('../../Schemas/TicketSetup');
+
+module.exports = async (interaction) => {
+
+  // 🔒 PERMISSÃO STAFF
+  if (!interaction.member.roles.cache.has(STAFF_ROLE_ID)) {
+    return interaction.reply({
+      content: '❌ Você não tem permissão para usar o Painel Staff.',
+      ephemeral: true
+    });
+  }
+
+  // 🔒 ABRIR PAINEL STAFF
+  if (interaction.customId === 'staff_panel') {
+    const embed = new EmbedBuilder()
+      .setColor('#2f3136')
+      .setTitle('🔒 PAINEL ADMINISTRATIVO DO TICKET')
+      .setDescription(
+        `Olá ${interaction.member}, seja bem-vindo ao painel administrativo do ticket.\n` +
+        `Aqui você encontrará todas as opções de gerenciamento do ticket,\n` +
+        `caso haja alguma dúvida informe com os responsáveis.`
+      );
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('staff_notify')
+        .setLabel('🔔 Notificar Membro')
+        .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+        .setCustomId('staff_close')
+        .setLabel('❌ Fechar Ticket')
+        .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+        .setCustomId('staff_rename_channel')
+        .setLabel('✍️ Renomear Canal')
+        .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+        .setCustomId('ticket_claim')
+        .setLabel('Assumir ')
+        .setStyle(ButtonStyle.Success)
+    );
+
+    return interaction.reply({
+      embeds: [embed],
+      components: [row],
+      ephemeral: true
+    });
+  }
+
+  // 🔔 MENU DE NOTIFICAÇÃO
+  if (interaction.customId === 'staff_notify') {
+    const embed = new EmbedBuilder()
+      .setColor('#2f3136')
+      .setTitle('🔔 Notificar Solicitante')
+      .setDescription('Escolha como deseja notificar o solicitante do ticket.');
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('staff_notify_auto')
+        .setLabel('📨 Mensagem Automática')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('staff_notify_manual')
+        .setLabel('✍️ Mensagem Manual')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    return interaction.reply({
+      embeds: [embed],
+      components: [row],
+      ephemeral: true
+    });
+  }
+    // ✏️ RENOMEAR CANAL
+  if (interaction.customId === 'staff_rename_channel') {
+    const modal = new ModalBuilder()
+      .setCustomId('staff_rename_modal')
+      .setTitle('Renomear Canal');
+
+    const input = new TextInputBuilder()
+      .setCustomId('new_channel_name')
+      .setLabel('Novo nome do canal')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    return interaction.showModal(modal);
+  }
+
+  if (interaction.customId === 'staff_rename_modal') {
+    const newName = interaction.fields.getTextInputValue('new_channel_name');
+    await interaction.channel.setName(newName);
+
+    return interaction.reply({
+      content: `✅ Canal renomeado para **${newName}**.`,
+      ephemeral: true
+    });
+  }
+
+  // 📨 NOTIFICAÇÃO AUTOMÁTICA
+  if (interaction.customId === 'staff_notify_auto') {
+    const ticket = await TicketSchema.findOne({
+      GuildID: interaction.guild.id,
+      ChannelID: interaction.channel.id
+    });
+    if (!ticket) return;
+
+    const user = await interaction.client.users.fetch(ticket.OwnerID);
+
+    await user.send(
+      `🔔 **Atualização no seu ticket**\n\n` +
+      `Nossa equipe respondeu e aguarda seu retorno no ticket:\n` +
+      `${interaction.channel}`
+    );
+
+    return interaction.reply({
+      content: '✅ Mensagem automática enviada ao solicitante.',
+      ephemeral: true
+    });
+  }
+
+  // ✍️ MODAL DE MENSAGEM MANUAL
+  if (interaction.customId === 'staff_notify_manual') {
+    const modal = new ModalBuilder()
+      .setCustomId('staff_notify_modal')
+      .setTitle('Mensagem Manual');
+
+    const input = new TextInputBuilder()
+      .setCustomId('notify_message')
+      .setLabel('Mensagem que será enviada ao solicitante')
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(input)
+    );
+
+    return interaction.showModal(modal);
+  }
+
+  // 📩 ENVIAR MENSAGEM MANUAL
+  if (interaction.customId === 'staff_notify_modal') {
+    const message = interaction.fields.getTextInputValue('notify_message');
+
+    const ticket = await TicketSchema.findOne({
+      GuildID: interaction.guild.id,
+      ChannelID: interaction.channel.id
+    });
+    if (!ticket) return;
+
+    const user = await interaction.client.users.fetch(ticket.OwnerID);
+
+    await user.send(
+      `🔔 **Mensagem da equipe de suporte**\n\n${message}`
+    );
+
+    return interaction.reply({
+      content: '✅ Mensagem manual enviada com sucesso.',
+      ephemeral: true
+    });
+  }
+// ❌ FINALIZAR TICKET
+if (interaction.customId !== 'staff_close') return;
+
+const { guild, channel } = interaction;
+
+// responde a interação UMA ÚNICA VEZ
+await interaction.deferUpdate();
+
+const data = await TicketSchema.findOne({
+  GuildID: guild.id,
+  ChannelID: channel.id
+});
+if (!data) return;
+
+const docs = await TicketSetup.findOne({ GuildID: guild.id });
+if (!docs) return;
+
+// 📄 TRANSCRIPT
+const transcript = await createTranscript(channel, {
+  limit: -1,
+  returnType: 'attachment',
+  saveImages: true,
+  poweredBy: false,
+  filename: `${config.ticketName}${data.TicketID}.html`
+});
+
+const claimed = data.Claimed ? '✅' : '❌';
+const claimedBy = data.ClaimedBy ? `<@${data.ClaimedBy}>` : '❌';
+const timestamp = Math.round(Date.now() / 1000);
+
+const transcriptEmbed = new EmbedBuilder().setDescription(
+  `${config.ticketTranscriptMember} <@${data.OwnerID}>\n` +
+  `${config.ticketTranscriptTicket} ${data.TicketID}\n` +
+  `${config.ticketTranscriptClaimed} ${claimed}\n` +
+  `${config.ticketTranscriptModerator} ${claimedBy}\n` +
+  `${config.ticketTranscriptTime} <t:${timestamp}:F>`
+);
+
+// 📂 ENVIAR TRANSCRIPT
+await guild.channels.cache.get(docs.Transcripts)?.send({
+  embeds: [transcriptEmbed],
+  files: [transcript]
+});
+
+// 🔒 AVISO NO CANAL
+await channel.send({
+  embeds: [
+    new EmbedBuilder()
+      .setTitle(config.ticketCloseTitle)
+      .setDescription(config.ticketCloseDescription)
+      .setColor(config.color)
+  ]
+});
+
+// 🗑️ REMOVER DO BANCO
+await TicketSchema.deleteOne({
+  GuildID: guild.id,
+  ChannelID: channel.id
+});
+
+// ⏳ DELETAR CANAL
+setTimeout(() => {
+  channel.delete().catch(() => {});
+}, 5000);
+
+
+
+
+
+
+
+
+
+
+
+
+    // 🏷️ CLAIMAR TICKET
+if (interaction.customId === 'ticket_claim') {
+
+  // ✅ responde a interação imediatamente (EVITA "a interação falhou")
+  await interaction.deferUpdate();
+
+  const { guild, channel, member } = interaction;
+
+  // 🔎 buscar ticket no banco
+  const data = await TicketSchema.findOne({
+    GuildID: guild.id,
+    ChannelID: channel.id
+  });
+
+  // se não existir, apenas encerra (interação já foi respondida)
+  if (!data) return;
+
+  // ❌ ticket já claimado
+  if (data.Claimed) {
+    await channel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(config.color)
+          .setDescription(
+            `${config.ticketAlreadyClaim} <@${data.ClaimedBy}>`
+          )
+      ]
+    });
+    return;
+  }
+
+  // ✅ marcar como claimado
+  await TicketSchema.updateOne(
+    { GuildID: guild.id, ChannelID: channel.id },
+    { Claimed: true, ClaimedBy: member.id }
+  );
+
+  // ✏️ atualizar nome do canal
+  await channel.edit({
+    name: `${config.ticketCheck}・${channel.name}`
+  });
+
+  // 📢 aviso no ticket
+  await channel.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(config.color)
+        .setTitle('Central de Suporte')
+        .setDescription(config.ticketSuccessClaim)
+    ]
+  });
+
+  return;
+}
+
+
+};

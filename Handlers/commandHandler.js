@@ -1,33 +1,45 @@
 function loadCommands(client) {
-  const fs = require('fs');
-  const config = require('../config');
-  require('colors');
+    const fs = require('fs');
+    const config = require('../config');
+    require('colors');
 
-  let commandsArray = [];
-  let developerArray = [];
+    let commandsArray = [];
+    let developerArray = [];
 
-  const commandsFolder = fs.readdirSync('./Commands');
-  for (const folder of commandsFolder) {
-    const commandFiles = fs
-      .readdirSync(`./Commands/${folder}`)
-      .filter((file) => file.endsWith('.js'));
+    const commandsFolder = fs.readdirSync('./Commands');
 
-    for (const file of commandFiles) {
-      const commandFile = require(`../Commands/${folder}/${file}`);
+    for (const folder of commandsFolder) {
+        const commandFiles = fs
+            .readdirSync(`./Commands/${folder}`)
+            .filter((file) => file.endsWith('.js'));
 
-      client.commands.set(commandFile.data.name, commandFile);
+        for (const file of commandFiles) {
+            const commandFile = require(`../Commands/${folder}/${file}`);
 
-      if (commandFile.developer) developerArray.push(commandFile.data.toJSON());
-      else commandsArray.push(commandFile.data.toJSON());
+            client.commands.set(commandFile.data.name, commandFile);
 
-      console.log('✦ Scripts'.red + ` ${file.split('.')[0]} em atividade regular.`);
-      continue;
+            if (commandFile.developer) {
+                developerArray.push(commandFile.data.toJSON());
+            } else {
+                commandsArray.push(commandFile.data.toJSON());
+            }
+
+            console.log(
+                '✦ Scripts'.red +
+                ` ${file.split('.')[0]} em atividade regular.`
+            );
+
+            continue;
+        }
     }
-  }
 
-  const developerGuild = client.guilds.cache.get(config.developerGuildID);
-if (developerGuild) {
-  developerGuild.commands.set(commandsArray);
-}}
+    const developerGuild = client.guilds.cache.get(
+        config.developerGuildID
+    );
+
+    if (developerGuild) {
+        developerGuild.commands.set(commandsArray);
+    }
+}
 
 module.exports = { loadCommands };
