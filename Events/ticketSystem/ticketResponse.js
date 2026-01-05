@@ -16,7 +16,8 @@ module.exports = {
   name: 'interactionCreate',
 
   async execute(interaction) {
-    const { guild, member, customId, channel } = interaction;
+    const { guild, member, customId } = interaction;
+
     const {
       ViewChannel,
       SendMessages,
@@ -24,19 +25,15 @@ module.exports = {
       ReadMessageHistory
     } = PermissionFlagsBits;
 
-    // Gerar um número aleatório para o ticket
     const ticketId = Math.floor(Math.random() * 9000) + 10000;
 
-    // Só processa selects (menus suspensos)
     if (!interaction.isStringSelectMenu()) return;
 
     const data = await TicketSetup.findOne({ GuildID: guild.id });
     if (!data) return;
 
-    // Verifica se o select é o do ticket (igual ao button no setup)
     if (customId !== data.Button) return;
 
-    // Verifica se o usuário já possui ticket aberto
     const alreadyticketEmbed = new EmbedBuilder()
       .setDescription(config.ticketAlreadyExist)
       .setColor(config.color);
@@ -47,19 +44,19 @@ module.exports = {
     });
 
     if (findTicket) {
-      return interaction
-        .reply({ embeds: [alreadyticketEmbed], ephemeral: true })
-        .catch(() => { });
+      return interaction.reply({
+        embeds: [alreadyticketEmbed],
+        ephemeral: true
+      }).catch(() => {});
     }
 
-    // Verifica permissão do bot
     if (!guild.members.me.permissions.has(ManageChannels)) {
-      return interaction
-        .reply({ content: 'Sem permissões', ephemeral: true })
-        .catch(() => { });
+      return interaction.reply({
+        content: 'Sem permissões',
+        ephemeral: true
+      }).catch(() => {});
     }
 
-    // Mapeia a escolha da categoria para nomes e descrições específicas
     const categoryMap = {
       'compras_vip': {
         nameSuffix: 'doação-vip',
@@ -77,44 +74,40 @@ module.exports = {
 
     const selectedValue = interaction.values[0];
     const categoryData = categoryMap[selectedValue];
-
     if (!categoryData) {
-      return interaction
-        .reply({ content: 'Categoria inválida.', ephemeral: true })
-        .catch(() => { });
+      return interaction.reply({
+        content: 'Categoria inválida.',
+        ephemeral: true
+      }).catch(() => {});
     }
 
     try {
-      // Cria o canal com nome específico baseado na categoria
       await guild.channels.create({
         name: `${config.ticketName}${categoryData.nameSuffix}-${ticketId}`,
         type: ChannelType.GuildText,
         parent: data.Category,
+
+        // 🔒 PERMISSÕES CORRIGIDAS (CANAL NASCE PRIVADO)
         permissionOverwrites: [
           {
+            id: guild.id, // @everyone REAL
+            deny: [ViewChannel]
+          },
+          {
             id: interaction.user.id,
-            allow: [
-              discord.PermissionFlagsBits.SendMessages,
-              discord.PermissionFlagsBits.ViewChannel,
-              discord.PermissionFlagsBits.ReadMessageHistory
-            ],
+            allow: [ViewChannel, SendMessages, ReadMessageHistory]
           },
           {
-            id: data.Everyone,
-            deny: [discord.PermissionFlagsBits.ViewChannel],
-          },
-          {
-            id: data.Handlers,
+            id: data.Handlers, // cargo HANDLER
             allow: [
-              discord.PermissionFlagsBits.ViewChannel,
-              discord.PermissionFlagsBits.SendMessages,
-              discord.PermissionFlagsBits.ReadMessageHistory,
-              discord.PermissionFlagsBits.ManageChannels
-            ],
+              ViewChannel,
+              SendMessages,
+              ReadMessageHistory,
+              ManageChannels
+            ]
           }
-        ],
+        ]
       })
-      .catch(() => { })
       .then(async (channel) => {
 
         await TicketSchema.create({
@@ -125,12 +118,12 @@ module.exports = {
           ChannelID: channel.id,
           Locked: false,
           Claimed: false,
-          Category: categoryData.nameSuffix // Pode armazenar categoria para registros, se quiser
+          Category: categoryData.nameSuffix
         });
 
-        await channel
-          .setTopic(`${config.ticketDescription} ${categoryData.description} - <@${member.id}>`)
-          .catch(() => { });
+        await channel.setTopic(
+          `${config.ticketDescription} ${categoryData.description} - <@${member.id}>`
+        ).catch(() => {});
 
         const embed = new EmbedBuilder()
           .setTitle(config.title)
@@ -149,33 +142,22 @@ module.exports = {
             .setStyle(ButtonStyle.Secondary)
             .setEmoji(config.ticketCloseEmoji),
 
-          /*new ButtonBuilder()
-            .setCustomId('ticket-manage')
-            .setLabel(config.ticketManage)
-            .setStyle(ButtonStyle.Secondary)
-            .setEmoji(config.ticketManageEmoji),*/
-
           new ButtonBuilder()
-            .setCustomId('ticket-claim')
-            .setLabel(config.ticketClaim)
-            .setStyle(ButtonStyle.Success)
-            .setEmoji(config.ticketClaimEmoji),
-
-            new ButtonBuilder()
             .setCustomId('staff_panel')
             .setLabel('🔒 Painel Staff')
             .setStyle(ButtonStyle.Secondary)
-            .setEmoji(config.ticketClaimEmoji),
+            .setEmoji(config.ticketClaimEmoji)
         );
 
         await channel.send({
           embeds: [embed],
           components: [buttons]
-        }).catch(() => { });
+        }).catch(() => {});
 
-        // Marca os handlers/moderadores e apaga a menção logo após
-        const handlersmention = await channel.send({ content: `<@&${data.Handlers}>` });
-        handlersmention.delete().catch(() => { });
+        const handlersmention = await channel.send({
+          content: `<@&${data.Handlers}>`
+        });
+        handlersmention.delete().catch(() => {});
 
         const ticketmessage = new EmbedBuilder()
           .setColor(config.color)
@@ -186,7 +168,7 @@ module.exports = {
         interaction.reply({
           embeds: [ticketmessage],
           ephemeral: true
-        }).catch(() => { });
+        }).catch(() => {});
       });
 
     } catch (err) {

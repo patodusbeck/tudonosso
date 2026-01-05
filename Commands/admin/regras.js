@@ -28,7 +28,7 @@ module.exports = {
       .setTitle('📜 Central de Regras')
       .setDescription(
         'Selecione no menu abaixo qual conjunto de regras deseja visualizar.\n\n' +
-        '⚠️ A leitura é registrada automaticamente.'
+        '<:aleert:1095202514216943636> O desconhecimento das regras não isenta punições.'
       )
       .setColor('#9c89ad');
 
@@ -37,12 +37,42 @@ module.exports = {
       .setPlaceholder('📂 Escolha um tipo de regra')
       .addOptions([
         {
-          label: 'Regras da Cidade',
+          label: 'Considerações Gerais',
+          value: 'geral',
+          emoji: '🏙️'
+        },
+        {
+          label: 'Diretrizes da Cidade',
           value: 'cidade',
           emoji: '🏙️'
         },
         {
-          label: 'Regras de Convivência',
+          label: 'Diretrizes Discord',
+          value: 'geral',
+          emoji: '🏙️'
+        },
+        {
+          label: 'Diretrizes Ticket',
+          value: 'geral',
+          emoji: '🏙️'
+        },
+        {
+          label: 'Diretrizes Personagem',
+          value: 'geral',
+          emoji: '🏙️'
+        },
+        {
+          label: 'Safezones',
+          value: 'geral',
+          emoji: '🏙️'
+        },
+        {
+          label: 'Diretrizes Personagem',
+          value: 'geral',
+          emoji: '🏙️'
+        },
+        {
+          label: 'Diretrizes de Convivência',
           value: 'convivencia',
           emoji: '🤝'
         },

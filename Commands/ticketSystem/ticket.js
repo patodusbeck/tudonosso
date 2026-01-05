@@ -41,7 +41,7 @@ module.exports = {
         .addChannelTypes(ChannelType.GuildText)
     )
 
-    .addRoleOption((option) =>
+    /*.addRoleOption((option) =>
       option
         .setName('handlers')
         .setDescription('Cargo Moderador.')
@@ -53,21 +53,25 @@ module.exports = {
         .setName('everyone')
         .setDescription('Cargo Everyone.')
         .setRequired(true)
-    ),
+    )*/,
 
   async execute(interaction) {
     const { guild, options } = interaction;
 
     /* 🔐 CÓDIGO ÚNICO */
     const button = `SUP-${Date.now().toString(36).toUpperCase()}`;
+    /* CARGO VERIFICADO */
+    const everyone = config.VerifiedRole;
+    /* 🔐 CARGO MODERADOR */
+    const handlers = config.roleIdModerador;
 
     try {
       const channel = options.getChannel('channel');
       const category = options.getChannel('category');
       const transcripts = options.getChannel('transcripts');
-      const handlers = options.getRole('handlers');
+     /* const handlers = options.getRole('handlers');
       const everyone = options.getRole('everyone');
-      /*const button = options.getString('button');*/
+      const button = options.getString('button');*/
 
       await TicketSetup.findOneAndUpdate(
         { GuildID: guild.id },
@@ -109,13 +113,7 @@ Podemos realizar atendimentos fora do horário informado, porém não garantimos
         )
         .setImage(config.image);
 
-        const staffButton = new ActionRowBuilder().addComponents(
-  new ButtonBuilder()
-    .setCustomId('staff_panel')
-    .setLabel('🔒 Painel Staff')
-    .setStyle(ButtonStyle.Secondary)
-);
-
+        
 
       /* --------------------------- MENU DE SELEÇÃO ---------------------------------------------- */
       const selectMenu = new StringSelectMenuBuilder()

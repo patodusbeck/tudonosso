@@ -1,7 +1,10 @@
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  PermissionFlagsBits
+  PermissionFlagsBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
 } = require('discord.js');
 
 const { PIX } = require('gpix/dist');
@@ -16,6 +19,7 @@ const PixSchema = new mongoose.Schema({
   valor: Number,
   chave: String,
   codigo: String,
+  codigoPix: String,
   status: { type: String, default: 'PENDENTE' },
   criadoEm: { type: Date, default: Date.now },
   expiraEm: Date
@@ -48,7 +52,7 @@ module.exports = {
 
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({
-        content: 'Você não tem permissão.',
+        content: '❌ Você não tem permissão.',
         ephemeral: true
       });
     }
@@ -57,23 +61,13 @@ module.exports = {
     const produto = interaction.options.getString('descrição');
     const chave = interaction.options.getString('chave');
 
-    /* ⏳ EXPIRAÇÃO 10 MINUTOS */
-    const tempoExpiracao = 60 * 1000;
+    /* ⏳ EXPIRAÇÃO */
+    const tempoExpiracao = 10 * 60 * 1000;
     const expiraEm = new Date(Date.now() + tempoExpiracao);
     const expiraTimestamp = `<t:${Math.floor(expiraEm.getTime() / 1000)}:R>`;
 
-    /* 🔐 CÓDIGO ÚNICO */
+    /* 🔐 CÓDIGO */
     const codigo = `PIX-${Date.now().toString(36).toUpperCase()}`;
-
-    /* 💾 SALVA NO BANCO */
-    const registro = await PixModel.create({
-      userId: interaction.user.id,
-      produto,
-      valor,
-      chave,
-      codigo,
-      expiraEm
-    });
 
     /* 💠 GERA PIX */
     const pix = PIX.static()
@@ -83,6 +77,20 @@ module.exports = {
       .setDescription(`${produto} | ${codigo}`)
       .setAmount(valor);
 
+    const codigoPix = await pix.getBRCode(); // ✅ CORRETO
+
+    /* 💾 SALVA */
+    const registro = await PixModel.create({
+      userId: interaction.user.id,
+      produto,
+      valor,
+      chave,
+      codigo,
+      codigoPix,
+      expiraEm
+    });
+
+    /* 🖼️ QR CODE */
     const canvas = Canvas.createCanvas(1200, 1200);
     const ctx = canvas.getContext('2d');
 
@@ -91,6 +99,7 @@ module.exports = {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(qr, 0, 0, canvas.width, canvas.height);
 
+    /* 📦 EMBED */
     const embed = new EmbedBuilder()
       .setTitle('💠 Pagamento via PIX')
       .setThumbnail(config.thumbnail)
@@ -107,8 +116,17 @@ module.exports = {
         iconURL: config.thumbnail
       });
 
+    /* 🔘 BOTÃO COPIA E COLA */
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`pix_copia_${registro._id}`)
+        .setLabel('📋 PIX Copia e Cola')
+        .setStyle(ButtonStyle.Primary)
+    );
+
     const mensagem = await interaction.reply({
       embeds: [embed],
+      components: [row],
       files: [{
         name: 'qrcode.png',
         attachment: canvas.toBuffer()
@@ -116,7 +134,7 @@ module.exports = {
       fetchReply: true
     });
 
-    /* ⛔ AUTO-EXPIRAÇÃO */
+    /* ⛔ AUTO EXPIRA */
     setTimeout(async () => {
       try {
         await PixModel.updateOne(
@@ -131,7 +149,7 @@ module.exports = {
 
         await mensagem.edit({
           embeds: [expiredEmbed],
-          files: []
+          components: []
         });
       } catch (err) {
         console.log('Erro ao expirar PIX:', err.message);
@@ -139,3 +157,4 @@ module.exports = {
     }, tempoExpiracao);
   }
 };
+module.exports.PixModel = PixModel;
